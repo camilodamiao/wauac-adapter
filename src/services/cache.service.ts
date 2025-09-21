@@ -91,8 +91,8 @@ export class CacheService {
     // ❌ ERROR: Erro na conexão Redis
     this.redis.on('error', (error) => {
       logger.error('Redis connection error', {
-        error: error.message,
-        code: error.code || 'UNKNOWN'
+        error: (error as Error).message,
+        code: (error as any).code || 'UNKNOWN'
       });
       this.isConnected = false;
     });
@@ -142,7 +142,8 @@ export class CacheService {
         await this.redis.connect();
       } catch (error) {
         // ❌ ERROR: Falha na conexão
-        logger.error('Failed to connect to Redis', { error: error.message });
+        const err = error as Error;
+        logger.error('Failed to connect to Redis', { error: err.message });
         throw new Error('Cache service is not available');
       }
     }
@@ -204,13 +205,14 @@ export class CacheService {
       return mapping;
 
     } catch (error) {
+      const err = error as Error;
       logger.error('Error getting mapping from cache', {
         correlationId,
         phone: phone.substring(0, 5) + '***',
-        error: error.message
+        error: err.message
       });
 
-      if (error.message.includes('Cache service is not available')) {
+      if (err.message.includes('Cache service is not available')) {
         return null;
       }
 
@@ -265,13 +267,14 @@ export class CacheService {
       });
 
     } catch (error) {
+      const err = error as Error;
       logger.error('Error setting mapping in cache', {
         correlationId,
         phone: phone.substring(0, 5) + '***',
-        error: error.message
+        error: err.message
       });
 
-      if (!error.message.includes('Cache service is not available')) {
+      if (!(error as Error).message.includes('Cache service is not available')) {
         throw error;
       }
     }
@@ -313,10 +316,10 @@ export class CacheService {
       logger.error('Error deleting mapping from cache', {
         correlationId,
         phone: phone.substring(0, 5) + '***',
-        error: error.message
+        error: (error as Error).message
       });
 
-      if (!error.message.includes('Cache service is not available')) {
+      if (!(error as Error).message.includes('Cache service is not available')) {
         throw error;
       }
     }
@@ -345,7 +348,7 @@ export class CacheService {
       logger.error('Error updating last message time', {
         correlationId,
         phone: phone.substring(0, 5) + '***',
-        error: error.message
+        error: (error as Error).message
       });
     }
   }
@@ -392,7 +395,7 @@ export class CacheService {
           } catch (parseError) {
             logger.warn('Failed to parse cached mapping', {
               correlationId,
-              error: parseError.message
+              error: (parseError as Error).message
             });
           }
         }
@@ -411,10 +414,10 @@ export class CacheService {
     } catch (error) {
       logger.error('Error getting all mappings from cache', {
         correlationId,
-        error: error.message
+        error: (error as Error).message
       });
 
-      if (error.message.includes('Cache service is not available')) {
+      if ((error as Error).message.includes('Cache service is not available')) {
         return [];
       }
 
@@ -459,7 +462,7 @@ export class CacheService {
     } catch (error) {
       logger.error('Error clearing expired mappings', {
         correlationId,
-        error: error.message
+        error: (error as Error).message
       });
       throw error;
     }
@@ -497,7 +500,7 @@ export class CacheService {
     } catch (error) {
       logger.error('Error getting cache stats', {
         correlationId,
-        error: error.message
+        error: (error as Error).message
       });
 
       return {
@@ -515,7 +518,7 @@ export class CacheService {
         logger.info('Redis connection closed gracefully');
       }
     } catch (error) {
-      logger.error('Error disconnecting from Redis', { error: error.message });
+      logger.error('Error disconnecting from Redis', { error: (error as Error).message });
     }
   }
 }

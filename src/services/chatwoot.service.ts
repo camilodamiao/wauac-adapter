@@ -144,25 +144,42 @@ export class ChatwootService {
    */
   async findOrCreateContact(phone: string, name?: string): Promise<ChatwootContact> {
     try {
+      // Converter para formato E164 se necessário
+      let phoneE164 = phone;
+      if (!phone.startsWith('+')) {
+        // Se começa com 55, adicionar +
+        if (phone.startsWith('55')) {
+          phoneE164 = `+${phone}`;
+        } else {
+          // Assumir Brasil se não tem código de país
+          phoneE164 = `+55${phone}`;
+        }
+      }
+
+      logger.info('📞 Buscando/criando contato', {
+        originalPhone: phone,
+        phoneE164
+      });
+
       // 🔍 SEARCH: Busca contato existente por telefone
       const searchResponse = await this.api.get(`/accounts/${this.accountId}/contacts/search`, {
-        params: { q: phone }
+        params: { q: phoneE164 }
       });
 
       // ✅ FOUND: Contato encontrado
       if (searchResponse.data.payload && searchResponse.data.payload.length > 0) {
-        logger.info('📞 Contato encontrado', { phone, id: searchResponse.data.payload[0].id });
+        logger.info('📞 Contato encontrado', { phoneE164, id: searchResponse.data.payload[0].id });
         return searchResponse.data.payload[0];
       }
 
       // 🆕 CREATE: Criar novo contato
       const createResponse = await this.api.post(`/accounts/${this.accountId}/contacts`, {
-        phone_number: phone,
-        name: name || phone
+        phone_number: phoneE164,
+        name: name || phoneE164
       });
 
       logger.info('👤 Novo contato criado', {
-        phone,
+        phoneE164,
         name,
         id: createResponse.data.payload.contact.id
       });

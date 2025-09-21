@@ -2,83 +2,78 @@ import winston from 'winston';
 import path from 'path';
 import { config } from '../config/environment';
 
-const sensitiveKeys = [
-  'password',
-  'token',
-  'apikey',
-  'api_key',
-  'secret',
-  'authorization',
-  'auth',
-  'clienttoken',
-  'client_token',
-  'bearer',
-  'apitoken',
-  'api_token',
-  'accesstoken',
-  'access_token',
-  'refreshtoken',
-  'refresh_token',
-  'sessionid',
-  'session_id',
-  'cookie',
-  'cookies'
-];
+// Removed sensitiveKeys array - now using inline checks in sanitizeData function
 
-function sanitizeData(data: any): any {
+function sanitizeData(data: any, seen = new WeakSet()): any {
   if (data === null || data === undefined) {
     return data;
   }
 
+  // Evitar loops infinitos com objetos circulares
+  if (typeof data === 'object' && data !== null) {
+    if (seen.has(data)) {
+      return '[Circular Reference]';
+    }
+    seen.add(data);
+  }
+
   if (typeof data === 'string') {
-    return data;
+    // Mascarar dados sensíveis
+    if (data.includes('Bearer ') || data.includes('api_key')) {
+      return data.substring(0, 10) + '***';
+    }
+    // Mascarar telefones parcialmente
+    if (/^\+?\d{10,}$/.test(data)) {
+      return data.substring(0, 6) + '***';
+    }
   }
 
   if (Array.isArray(data)) {
-    return data.map(item => sanitizeData(item));
+    return data.map(item => sanitizeData(item, seen));
   }
 
   if (typeof data === 'object') {
     const sanitized: any = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        // Pular propriedades que causam problemas
+        if (key === '_req' || key === '_res' || key === 'socket' || key === 'client') {
+          sanitized[key] = '[Omitted]';
+          continue;
+        }
 
-    for (const [key, value] of Object.entries(data)) {
-      const lowerKey = key.toLowerCase();
-      const isSensitive = sensitiveKeys.some(sensitiveKey =>
-        lowerKey.includes(sensitiveKey)
-      );
-
-      if (isSensitive) {
-        sanitized[key] = '[REDACTED]';
-      } else {
-        sanitized[key] = sanitizeData(value);
+        if (key === 'password' || key === 'token' || key === 'api_key') {
+          sanitized[key] = '***';
+        } else {
+          sanitized[key] = sanitizeData(data[key], seen);
+        }
       }
     }
-
     return sanitized;
   }
 
   return data;
 }
 
-const _customFormat = winston.format.combine(
-  winston.format.timestamp({
-    format: 'YYYY-MM-DD HH:mm:ss.SSS'
-  }),
-  winston.format.errors({ stack: true }),
-  winston.format.printf((info) => {
-    const { timestamp, level, message, ...meta } = info;
+// const _customFormat = winston.format.combine(
+//   winston.format.timestamp({
+//     format: 'YYYY-MM-DD HH:mm:ss.SSS'
+//   }),
+//   winston.format.errors({ stack: true }),
+//   winston.format.printf((info) => {
+//     const { timestamp, level, message, ...meta } = info;
 
-    const sanitizedMeta = Object.keys(meta).length > 0 ? sanitizeData(meta) : undefined;
-
-    let logEntry = `${timestamp} [${level.toUpperCase()}]: ${message}`;
-
-    if (sanitizedMeta && Object.keys(sanitizedMeta).length > 0) {
-      logEntry += ` ${JSON.stringify(sanitizedMeta)}`;
-    }
-
-    return logEntry;
-  })
-);
+//     const sanitizedMeta = Object.keys(meta).length > 0 ? sanitizeData(meta) : undefined;
+//
+//     let logEntry = `${timestamp} [${level.toUpperCase()}]: ${message}`;
+//
+//     if (sanitizedMeta && Object.keys(sanitizedMeta).length > 0) {
+//       logEntry += ` ${JSON.stringify(sanitizedMeta)}`;
+//     }
+//
+//     return logEntry;
+//   })
+// );
 
 const jsonFormat = winston.format.combine(
   winston.format.timestamp({

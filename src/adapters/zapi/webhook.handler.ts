@@ -15,24 +15,38 @@ import { ZApiTranslator, TranslationContext } from './translator';
  * @description Schema Joi para validação de mensagens recebidas da Z-API
  * @flow Valida estrutura completa do webhook incluindo todos tipos de mídia
  * @dependencies Joi para validação de schema
- * @validation Campos obrigatórios: instanceId, messageId, phone, momment
+ * @validation Campos obrigatórios: instanceId, messageId, phone, fromMe, type
  * @errors Retorna detalhes específicos do campo inválido
  * @todo Adicionar validação de tamanho máximo para arquivos
  */
 const messageReceivedSchema = Joi.object({
-  waitingMessage: Joi.boolean().optional(),
-  isGroup: Joi.boolean().optional(),
-  isNewsletter: Joi.boolean().optional(),
+  // ✅ REQUIRED: Campos essenciais obrigatórios
   instanceId: Joi.string().required(),
   messageId: Joi.string().required(),
   phone: Joi.string().required(),
   fromMe: Joi.boolean().default(false),
-  momment: Joi.number().required(),
+  type: Joi.string().default('ReceivedCallback'),
+
+  // 📅 OPTIONAL: Campos básicos opcionais
+  momment: Joi.number().optional(),
   status: Joi.string().optional(),
   chatName: Joi.string().optional(),
   senderName: Joi.string().optional(),
-  senderPhoto: Joi.string().uri().optional(),
-  type: Joi.string().default('ReceivedCallback'),
+  senderPhoto: Joi.string().allow(null).optional(), // Pode ser string ou null
+  photo: Joi.string().optional(),
+
+  // 🏷️ OPTIONAL: Campos de metadados opcionais
+  participantLid: Joi.string().allow(null).optional(),
+  chatLid: Joi.string().optional(),
+  connectedPhone: Joi.string().optional(),
+  waitingMessage: Joi.boolean().optional(),
+  isEdit: Joi.boolean().optional(),
+  isGroup: Joi.boolean().optional(),
+  isNewsletter: Joi.boolean().optional(),
+  isStatusReply: Joi.boolean().optional(),
+  broadcast: Joi.boolean().optional(),
+  forwarded: Joi.boolean().optional(),
+  fromApi: Joi.boolean().optional(),
 
   // 💬 TEXT: Mensagem de texto simples
   text: Joi.object({
@@ -76,7 +90,7 @@ const messageReceivedSchema = Joi.object({
     description: Joi.string().optional(),
     address: Joi.string().optional()
   }).optional()
-});
+}).unknown(true); // Permitir campos extras não mapeados
 
 /**
  * @anchor webhook.handler:messageStatusSchema

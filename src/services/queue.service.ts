@@ -104,8 +104,8 @@ export class QueueService {
         correlationId: job.data.correlationId,
         attempts: job.attemptsMade,
         maxAttempts: job.opts.attempts,
-        error: error.message,
-        stack: error.stack
+        error: (error as Error).message,
+        stack: (error as Error).stack
       });
     });
 
@@ -119,8 +119,8 @@ export class QueueService {
 
     this.messageQueue.on('error', (error: Error) => {
       logger.error('Queue error', {
-        error: error.message,
-        stack: error.stack
+        error: (error as Error).message,
+        stack: (error as Error).stack
       });
     });
 
@@ -160,15 +160,12 @@ export class QueueService {
       // Step 1: Find or create contact
       const contact = await this.chatwootService.findOrCreateContact(
         phone,
-        senderName,
-        correlationId
+        senderName
       );
 
       // Step 2: Find or create conversation
       const conversation = await this.chatwootService.findOrCreateConversation(
-        contact.id,
-        undefined,
-        correlationId
+        contact.id
       );
 
       // Step 3: Translate message format
@@ -187,8 +184,8 @@ export class QueueService {
       // Step 4: Send message to Chatwoot
       const chatwootMessage = await this.chatwootService.sendMessage(
         conversation.id,
-        chatwootMessageData,
-        correlationId
+        chatwootMessageData.content,
+        chatwootMessageData.message_type
       );
 
       // Step 5: Update cache
@@ -196,13 +193,13 @@ export class QueueService {
         chatwootContactId: contact.id,
         chatwootConversationId: conversation.id,
         zapiPhone: phone,
-        contactName: senderName,
+        contactName: senderName || '',
         lastMessageAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date()
       };
 
-      await this.cacheService.setMapping(phone, mappingData, undefined, correlationId);
+      await this.cacheService.setMapping(phone, mappingData);
 
       const processingTime = Date.now() - startTime;
 
@@ -228,14 +225,14 @@ export class QueueService {
 
       logger.error('Error processing message', {
         correlationId,
-        error: error.message,
-        stack: error.stack,
+        error: (error as Error).message,
+        stack: (error as Error).stack,
         processingTime
       });
 
       return {
         success: false,
-        error: error.message,
+        error: (error as Error).message,
         processingTime
       };
     }
@@ -290,14 +287,14 @@ export class QueueService {
 
       logger.error('Error processing status', {
         correlationId,
-        error: error.message,
-        stack: error.stack,
+        error: (error as Error).message,
+        stack: (error as Error).stack,
         processingTime
       });
 
       return {
         success: false,
-        error: error.message,
+        error: (error as Error).message,
         processingTime
       };
     }
@@ -328,7 +325,7 @@ export class QueueService {
     } catch (error) {
       logger.error('Error adding message job to queue', {
         correlationId: data.correlationId,
-        error: error.message
+        error: (error as Error).message
       });
       throw error;
     }
@@ -359,7 +356,7 @@ export class QueueService {
     } catch (error) {
       logger.error('Error adding status job to queue', {
         correlationId: data.correlationId,
-        error: error.message
+        error: (error as Error).message
       });
       throw error;
     }
@@ -374,14 +371,15 @@ export class QueueService {
     paused: number;
   }> {
     try {
-      const [waiting, active, completed, failed, delayed, paused] = await Promise.all([
+      const [waiting, active, completed, failed, delayed] = await Promise.all([
         this.messageQueue.getWaiting(),
         this.messageQueue.getActive(),
         this.messageQueue.getCompleted(),
         this.messageQueue.getFailed(),
-        this.messageQueue.getDelayed(),
-        this.messageQueue.getPaused()
+        this.messageQueue.getDelayed()
       ]);
+
+      const paused = await this.messageQueue.isPaused();
 
       return {
         waiting: waiting.length,
@@ -389,11 +387,11 @@ export class QueueService {
         completed: completed.length,
         failed: failed.length,
         delayed: delayed.length,
-        paused: paused.length
+        paused: paused ? 1 : 0
       };
 
     } catch (error) {
-      logger.error('Error getting queue stats', { error: error.message });
+      logger.error('Error getting queue stats', { error: (error as Error).message });
       throw error;
     }
   }
@@ -402,7 +400,7 @@ export class QueueService {
     try {
       return await this.messageQueue.getFailed(0, limit - 1);
     } catch (error) {
-      logger.error('Error getting failed jobs', { error: error.message });
+      logger.error('Error getting failed jobs', { error: (error as Error).message });
       throw error;
     }
   }
@@ -417,7 +415,7 @@ export class QueueService {
         throw new Error(`Job ${jobId} not found`);
       }
     } catch (error) {
-      logger.error('Error retrying job', { jobId, error: error.message });
+      logger.error('Error retrying job', { jobId, error: (error as Error).message });
       throw error;
     }
   }
@@ -428,7 +426,7 @@ export class QueueService {
       logger.info('Completed jobs cleaned', { count: cleaned.length, maxAge });
       return cleaned.length;
     } catch (error) {
-      logger.error('Error cleaning completed jobs', { error: error.message });
+      logger.error('Error cleaning completed jobs', { error: (error as Error).message });
       throw error;
     }
   }
@@ -438,7 +436,7 @@ export class QueueService {
       await this.messageQueue.pause();
       logger.info('Queue paused');
     } catch (error) {
-      logger.error('Error pausing queue', { error: error.message });
+      logger.error('Error pausing queue', { error: (error as Error).message });
       throw error;
     }
   }
@@ -448,7 +446,7 @@ export class QueueService {
       await this.messageQueue.resume();
       logger.info('Queue resumed');
     } catch (error) {
-      logger.error('Error resuming queue', { error: error.message });
+      logger.error('Error resuming queue', { error: (error as Error).message });
       throw error;
     }
   }
@@ -459,7 +457,7 @@ export class QueueService {
       await this.cacheService.disconnect();
       logger.info('Queue service closed gracefully');
     } catch (error) {
-      logger.error('Error closing queue service', { error: error.message });
+      logger.error('Error closing queue service', { error: (error as Error).message });
     }
   }
 }
