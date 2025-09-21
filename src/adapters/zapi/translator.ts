@@ -26,12 +26,16 @@ export interface ChatwootMessage {
   message_type: 'incoming' | 'outgoing';
   content_type: 'text' | 'image' | 'audio' | 'video' | 'file';
   private?: boolean;
-  content_attributes?: Record<string, any>;
-  attachments?: Array<{
-    file_type: string;
-    account_id?: number;
-    data_url: string;
-  }>;
+  content_attributes?: {
+    attachments?: Array<{
+      file_type: string;
+      data_url: string;
+      thumb_url?: string;
+    }>;
+    media_info?: Record<string, any>;
+    source?: string;
+    [key: string]: any;
+  };
 }
 
 /**
@@ -127,7 +131,9 @@ export class ZApiTranslator {
       // Image message
       if (zapiMessage.image) {
         baseMessage.content = zapiMessage.image.caption || '[Image]';
-        baseMessage.attachments = [{
+        baseMessage.content_type = 'text';
+        // Movemos attachments para content_attributes onde Chatwoot espera
+        baseMessage.content_attributes['attachments'] = [{
           file_type: 'image',
           data_url: zapiMessage.image.imageUrl,
           thumb_url: zapiMessage.image.thumbnailUrl || zapiMessage.image.imageUrl
@@ -142,7 +148,9 @@ export class ZApiTranslator {
       // Audio message
       if (zapiMessage.audio) {
         baseMessage.content = '[Audio Message]';
-        baseMessage.attachments = [{
+        baseMessage.content_type = 'text';
+        // Movemos attachments para content_attributes onde Chatwoot espera
+        baseMessage.content_attributes['attachments'] = [{
           file_type: 'audio',
           data_url: zapiMessage.audio.audioUrl
         }];
@@ -156,7 +164,9 @@ export class ZApiTranslator {
       // Video message
       if (zapiMessage.video) {
         baseMessage.content = zapiMessage.video.caption || '[Video]';
-        baseMessage.attachments = [{
+        baseMessage.content_type = 'text';
+        // Movemos attachments para content_attributes onde Chatwoot espera
+        baseMessage.content_attributes['attachments'] = [{
           file_type: 'video',
           data_url: zapiMessage.video.videoUrl,
           thumb_url: zapiMessage.video.videoUrl
@@ -171,7 +181,9 @@ export class ZApiTranslator {
       // Document message
       if (zapiMessage.document) {
         baseMessage.content = `[Document: ${zapiMessage.document.fileName || zapiMessage.document.title || 'Unknown'}]`;
-        baseMessage.attachments = [{
+        baseMessage.content_type = 'text';
+        // Movemos attachments para content_attributes onde Chatwoot espera
+        baseMessage.content_attributes['attachments'] = [{
           file_type: 'file',
           data_url: zapiMessage.document.documentUrl
         }];
@@ -236,15 +248,15 @@ export class ZApiTranslator {
       });
 
       // Basic text message
-      if (chatwootMessage.content_type === 'text' && (!chatwootMessage.attachments || chatwootMessage.attachments.length === 0)) {
+      if (chatwootMessage.content_type === 'text' && (!chatwootMessage.content_attributes?.attachments || chatwootMessage.content_attributes.attachments.length === 0)) {
         return {
           message: chatwootMessage.content
         };
       }
 
       // Message with attachments
-      if (chatwootMessage.attachments && chatwootMessage.attachments.length > 0) {
-        const attachment = chatwootMessage.attachments[0];
+      if (chatwootMessage.content_attributes?.attachments && chatwootMessage.content_attributes.attachments.length > 0) {
+        const attachment = chatwootMessage.content_attributes.attachments[0];
 
         if (!attachment) {
           return { message: chatwootMessage.content || '[Empty message]' };

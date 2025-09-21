@@ -55,33 +55,44 @@ const messageReceivedSchema = Joi.object({
 
   // 🖼️ IMAGE: Mensagem com imagem e caption opcional
   image: Joi.object({
-    caption: Joi.string().optional(),
+    caption: Joi.string().allow('').optional(),
     imageUrl: Joi.string().uri().required(),
     thumbnailUrl: Joi.string().uri().optional(),
-    mimeType: Joi.string().optional()
-  }).optional(),
+    mimeType: Joi.string().optional(),
+    viewOnce: Joi.boolean().optional(),
+    width: Joi.number().optional(),
+    height: Joi.number().optional()
+  }).unknown(true).optional(),
 
   // 🎵 AUDIO: Mensagem de áudio (incluindo PTT)
   audio: Joi.object({
     audioUrl: Joi.string().uri().required(),
     mimeType: Joi.string().optional(),
-    ptt: Joi.boolean().optional()
-  }).optional(),
+    ptt: Joi.boolean().optional(),
+    seconds: Joi.number().optional(),
+    viewOnce: Joi.boolean().optional()
+  }).unknown(true).optional(),
 
   // 🎥 VIDEO: Mensagem de vídeo com caption opcional
   video: Joi.object({
-    caption: Joi.string().optional(),
+    caption: Joi.string().allow('').optional(),
     videoUrl: Joi.string().uri().required(),
-    mimeType: Joi.string().optional()
-  }).optional(),
+    mimeType: Joi.string().optional(),
+    width: Joi.number().optional(),
+    height: Joi.number().optional(),
+    seconds: Joi.number().optional(),
+    viewOnce: Joi.boolean().optional(),
+    isGif: Joi.boolean().optional()
+  }).unknown(true).optional(),
 
   // 📄 DOCUMENT: Arquivo/documento anexado
   document: Joi.object({
     documentUrl: Joi.string().uri().required(),
     fileName: Joi.string().optional(),
     mimeType: Joi.string().optional(),
-    title: Joi.string().optional()
-  }).optional(),
+    title: Joi.string().optional(),
+    viewOnce: Joi.boolean().optional()
+  }).unknown(true).optional(),
 
   // 📍 LOCATION: Localização geográfica
   location: Joi.object({
@@ -122,7 +133,7 @@ const messageStatusSchema = Joi.object({
  * @todo Implementar retry com backoff exponencial, adicionar métricas de performance
  */
 export class ZApiWebhookHandler {
-  private messageQueue: Queue.Queue;
+  private messageQueue?: Queue.Queue;
   private chatwootService: ChatwootService;
   private translator: ZApiTranslator;
   private contactCache = new Map<string, number>();
@@ -138,25 +149,28 @@ export class ZApiWebhookHandler {
    * @todo Adicionar health check do Redis, configurar cluster mode
    */
   constructor() {
-    // 🔧 CONFIG: Lê configurações Redis das variáveis de ambiente
+    // 🔧 CONFIG: Lê configurações das variáveis de ambiente
+    const useRedis = process.env['USE_REDIS'] === 'true';
     const redisHost = process.env['REDIS_HOST'] || 'localhost';
     const redisPort = parseInt(process.env['REDIS_PORT'] || '6379');
     const redisPassword = process.env['REDIS_PASSWORD'];
 
-    // 🚀 QUEUE: Inicializa fila Bull com configurações de retry
-    this.messageQueue = new Queue('z-api-messages', redisPassword ?
-      `redis://:${redisPassword}@${redisHost}:${redisPort}` :
-      `redis://${redisHost}:${redisPort}`, {
-      defaultJobOptions: {
-        removeOnComplete: 10,    // 🧹 Manter apenas 10 jobs completos
-        removeOnFail: 25,        // 🧹 Manter 25 jobs falhados para debug
-        attempts: 3,             // 🔄 Máximo 3 tentativas por job
-        backoff: {
-          type: 'exponential',   // 📈 Backoff exponencial entre tentativas
-          delay: 2000,           // ⏱️ Delay inicial de 2 segundos
-        },
-      }
-    });
+    // 🚀 QUEUE: Inicializa fila apenas se Redis estiver habilitado
+    if (useRedis) {
+      this.messageQueue = new Queue('z-api-messages', redisPassword ?
+        `redis://:${redisPassword}@${redisHost}:${redisPort}` :
+        `redis://${redisHost}:${redisPort}`, {
+        defaultJobOptions: {
+          removeOnComplete: 10,    // 🧹 Manter apenas 10 jobs completos
+          removeOnFail: 25,        // 🧹 Manter 25 jobs falhados para debug
+          attempts: 3,             // 🔄 Máximo 3 tentativas por job
+          backoff: {
+            type: 'exponential',   // 📈 Backoff exponencial entre tentativas
+            delay: 2000,           // ⏱️ Delay inicial de 2 segundos
+          },
+        }
+      });
+    }
 
     // 🔧 SERVICES: Inicializa serviços integrados
     this.chatwootService = new ChatwootService();
@@ -164,8 +178,9 @@ export class ZApiWebhookHandler {
 
     // 📝 LOG: Registra inicialização bem-sucedida
     logger.info('ZApiWebhookHandler initialized', {
-      redisHost,
-      redisPort,
+      useRedis,
+      redisHost: useRedis ? redisHost : 'disabled',
+      redisPort: useRedis ? redisPort : 'disabled',
       chatwootIntegration: true
     });
   }
@@ -321,23 +336,36 @@ export class ZApiWebhookHandler {
         correlationId,
         messageType: chatwootMessage.message_type,
         contentType: chatwootMessage.content_type,
-        hasAttachments: !!(chatwootMessage.attachments?.length)
+        hasAttachments: !!(chatwootMessage.content_attributes?.['attachments']?.length),
+        attachmentCount: chatwootMessage.content_attributes?.['attachments']?.length || 0,
+        attachmentTypes: chatwootMessage.content_attributes?.['attachments']?.map((a: any) => a.file_type)
       });
 
-      // 4️⃣ SEND: Enviar mensagem para Chatwoot
-      await this.chatwootService.sendMessage(
+      // 📤 SEND: Enviar mensagem completa (com attachments) para Chatwoot
+      logger.info('📤 Enviando mensagem para o Chatwoot', {
         conversationId,
-        chatwootMessage.content,
-        chatwootMessage.message_type
+        hasAttachments: !!(chatwootMessage.content_attributes?.['attachments'] && chatwootMessage.content_attributes['attachments'].length > 0),
+        attachmentTypes: chatwootMessage.content_attributes?.['attachments']?.map((a: any) => a.file_type),
+        contentPreview: chatwootMessage.content.substring(0, 50) + '...'
+      });
+
+      // ✅ CORREÇÃO: Passar o objeto completo com attachments
+      const result = await this.chatwootService.sendMessage(
+        conversationId,
+        chatwootMessage  // Objeto completo com content, attachments, etc.
       );
 
-      // ✅ SUCCESS: Loga processamento bem-sucedido
+      // ✅ SUCCESS: Loga processamento bem-sucedido com detalhes de mídia
       logger.info('✉️ Mensagem processada com sucesso no Chatwoot', {
         correlationId,
         messageId: message.messageId,
+        chatwootMessageId: result.id,
         contactId,
         conversationId,
-        phone: message.phone.substring(0, 5) + '***'
+        phone: message.phone.substring(0, 5) + '***',
+        contentType: chatwootMessage.content_type || 'text',
+        hasAttachments: !!(result.content_attributes?.attachments?.length),
+        attachmentCount: result.content_attributes?.attachments?.length || 0
       });
 
     } catch (error) {
@@ -389,29 +417,47 @@ export class ZApiWebhookHandler {
         type: 'message_status'
       };
 
-      // 🚀 QUEUE: Adiciona job com prioridade menor e delay
-      const job = await this.messageQueue.add('process-status', jobData, {
-        priority: 3,      // 📊 Prioridade baixa (status menos crítico que mensagens)
-        delay: 1000       // ⏱️ Delay de 1s para agrupar status sequenciais
-      });
+      // 🚀 QUEUE: Processa com ou sem Redis
+      if (this.messageQueue) {
+        const job = await this.messageQueue.add('process-status', jobData, {
+          priority: 3,      // 📊 Prioridade baixa (status menos crítico que mensagens)
+          delay: 1000       // ⏱️ Delay de 1s para agrupar status sequenciais
+        });
 
-      // 📊 METRICS: Loga estatísticas do job de status
-      logger.info('Status update queued for processing', {
-        correlationId,
-        jobId: job.id,
-        messageId: status.messageId,
-        phone: status.phone,
-        status: status.status
-      });
+        // 📊 METRICS: Loga estatísticas do job de status
+        logger.info('Status update queued for processing', {
+          correlationId,
+          jobId: job.id,
+          messageId: status.messageId,
+          phone: status.phone,
+          status: status.status
+        });
 
-      // ✅ RESPONSE: Confirma recebimento do status
-      res.status(200).json({
-        success: true,
-        message: 'Status update received and queued for processing',
-        correlationId,
-        jobId: job.id,
-        timestamp: new Date().toISOString()
-      });
+        // ✅ RESPONSE: Confirma recebimento do status
+        res.status(200).json({
+          success: true,
+          message: 'Status update received and queued for processing',
+          correlationId,
+          jobId: job.id,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // 🔄 DIRECT: Processa diretamente sem Redis
+        logger.info('Status update processed directly (Redis disabled)', {
+          correlationId,
+          messageId: status.messageId,
+          phone: status.phone,
+          status: status.status
+        });
+
+        // ✅ RESPONSE: Confirma processamento direto
+        res.status(200).json({
+          success: true,
+          message: 'Status update processed directly',
+          correlationId,
+          timestamp: new Date().toISOString()
+        });
+      }
 
     } catch (error: any) {
       // ⚠️ ERROR: Loga erro de status e repassa para middleware
@@ -435,20 +481,32 @@ export class ZApiWebhookHandler {
    */
   public getQueueStats = async (): Promise<any> => {
     try {
-      // 📊 METRICS: Consulta contadores de jobs por status
-      const waiting = await this.messageQueue.getWaiting();    // ⏳ Jobs aguardando processamento
-      const active = await this.messageQueue.getActive();      // 🔄 Jobs sendo processados
-      const completed = await this.messageQueue.getCompleted(); // ✅ Jobs finalizados com sucesso
-      const failed = await this.messageQueue.getFailed();      // ❌ Jobs que falharam
+      if (this.messageQueue) {
+        // 📊 METRICS: Consulta contadores de jobs por status
+        const waiting = await this.messageQueue.getWaiting();    // ⏳ Jobs aguardando processamento
+        const active = await this.messageQueue.getActive();      // 🔄 Jobs sendo processados
+        const completed = await this.messageQueue.getCompleted(); // ✅ Jobs finalizados com sucesso
+        const failed = await this.messageQueue.getFailed();      // ❌ Jobs que falharam
 
-      // 🧮 CALC: Calcula estatísticas consolidadas
-      return {
-        waiting: waiting.length,
-        active: active.length,
-        completed: completed.length,
-        failed: failed.length,
-        total: waiting.length + active.length + completed.length + failed.length
-      };
+        // 🧮 CALC: Calcula estatísticas consolidadas
+        return {
+          waiting: waiting.length,
+          active: active.length,
+          completed: completed.length,
+          failed: failed.length,
+          total: waiting.length + active.length + completed.length + failed.length
+        };
+      } else {
+        // 🚫 NO REDIS: Retorna estatísticas vazias quando Redis está desabilitado
+        return {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          total: 0,
+          redis_disabled: true
+        };
+      }
     } catch (error: any) {
       // ⚠️ ERROR: Loga erro de consulta de estatísticas
       logger.error('Error getting queue stats', { error: error.message });

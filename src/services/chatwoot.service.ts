@@ -10,6 +10,7 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
+import { config } from '../config/environment';
 
 /**
  * @anchor chatwoot.service:ChatwootContact
@@ -31,6 +32,28 @@ interface ChatwootConversation {
   contact_id: number;
   inbox_id: number;
   status: string;
+}
+
+/**
+ * @anchor chatwoot.service:ChatwootMessageData
+ * @description Interface para dados completos de mensagem do Chatwoot
+ * @supports Texto, imagens, áudio, vídeo, documentos
+ * @validation content obrigatório, attachments opcional
+ */
+interface ChatwootMessageData {
+  content: string;
+  message_type?: 'incoming' | 'outgoing';
+  private?: boolean;
+  content_type?: 'text' | 'input_text' | 'cards' | 'input_select' | 'form' | 'article';
+  content_attributes?: {
+    attachments?: Array<{
+      thumb_url?: string;
+      data_url: string;
+      message_id?: number;
+      file_type?: 'image' | 'audio' | 'video' | 'file';
+      file_size?: number;
+    }>;
+  };
 }
 
 /**
@@ -57,18 +80,16 @@ export class ChatwootService {
    * @todo Adicionar health check inicial, configuração SSL
    */
   constructor() {
-    // 🔧 CONFIG: Configurações do Chatwoot real
-    const baseURL = process.env['CHATWOOT_URL'] || 'http://5.161.122.154:3000';
-    const apiKey = process.env['CHATWOOT_API_KEY'];
+    const baseURL = config.chatwoot.url;
+    const apiKey = config.chatwoot.apiKey;
 
     // ⚠️ WARNING: Modo mock se API key não configurada
-    if (!apiKey) {
+    if (!apiKey || apiKey === 'your_api_key_here') {
       logger.warn('⚠️ CHATWOOT_API_KEY não configurada - modo mock ativo');
     }
 
-    // 🆔 IDS: IDs da conta e inbox
-    this.accountId = process.env['CHATWOOT_ACCOUNT_ID'] || '1';
-    this.inboxId = process.env['CHATWOOT_INBOX_ID'] || '1';
+    this.accountId = config.chatwoot.accountId.toString();
+    this.inboxId = config.chatwoot.inboxId.toString();
 
     // 🌐 HTTP: Cliente Axios configurado
     this.api = axios.create({
@@ -242,36 +263,64 @@ export class ChatwootService {
 
   /**
    * @anchor chatwoot.service:sendMessage
-   * @description Envia mensagem para conversa específica
-   * @flow Valida dados -> POST message -> Loga resultado -> Return
+   * @description Envia mensagem com suporte completo a mídias
+   * @flow Detecta tipo -> Prepara payload -> POST message -> Loga resultado
    * @dependencies Conversa existente, permissões de escrita
-   * @validation conversationId e content obrigatórios
+   * @validation conversationId obrigatório, contentOrData string ou objeto
+   * @supports Texto, imagens, áudio, vídeo, documentos com attachments
    * @errors Conversation not found, permission denied, send failed
-   * @todo Implementar retry, queue de mensagens, deduplicação
+   * @todo Implementar retry, queue de mensagens, validação de mídia
    */
-  async sendMessage(conversationId: number, content: string, messageType: string = 'incoming'): Promise<any> {
+  async sendMessage(
+    conversationId: number,
+    contentOrData: string | ChatwootMessageData,
+    messageType: string = 'incoming'
+  ): Promise<any> {
     try {
-      // 📤 SEND: Envia mensagem para a conversa
-      const response = await this.api.post(
-        `/accounts/${this.accountId}/conversations/${conversationId}/messages`,
-        {
-          content,
-          message_type: messageType,
+      let messageData: ChatwootMessageData;
+
+      // 🔄 COMPATIBILITY: Mantém compatibilidade com chamadas antigas (string)
+      if (typeof contentOrData === 'string') {
+        messageData = {
+          content: contentOrData,
+          message_type: messageType as 'incoming' | 'outgoing',
           private: false,
           content_type: 'text'
-        }
+        };
+      } else {
+        // 📱 MEDIA: Dados completos com possíveis anexos
+        messageData = {
+          ...contentOrData,
+          message_type: contentOrData.message_type || messageType as 'incoming' | 'outgoing',
+          private: contentOrData.private ?? false,
+          content_type: contentOrData.content_type || 'text'
+        };
+      }
+
+      // 📤 SEND: Envia mensagem completa para o Chatwoot
+      const response = await this.api.post(
+        `/accounts/${this.accountId}/conversations/${conversationId}/messages`,
+        messageData
       );
 
-      // ✅ SUCCESS: Mensagem enviada com sucesso
+      // ✅ SUCCESS: Log detalhado do tipo de mensagem enviada
+      const hasAttachments = messageData.content_attributes?.attachments?.length && messageData.content_attributes.attachments.length > 0;
       logger.info('✉️ Mensagem enviada ao Chatwoot', {
         conversationId,
-        messageId: response.data.id
+        messageId: response.data.id,
+        contentType: messageData.content_type,
+        hasAttachments,
+        attachmentCount: messageData.content_attributes?.attachments?.length || 0
       });
 
       return response.data;
     } catch (error) {
-      // ⚠️ ERROR: Erro no envio da mensagem
-      logger.error('Erro ao enviar mensagem', { conversationId, content, error });
+      // ⚠️ ERROR: Erro detalhado no envio
+      logger.error('Erro ao enviar mensagem', {
+        conversationId,
+        contentType: typeof contentOrData === 'string' ? 'text' : 'media',
+        error
+      });
       throw error;
     }
   }

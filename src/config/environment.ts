@@ -67,10 +67,10 @@ export const config: Config = {
     url: getEnvVar('REDIS_URL', 'redis://localhost:6379'),
   },
   chatwoot: {
-    url: getEnvVar('CHATWOOT_URL'),
-    apiKey: getEnvVar('CHATWOOT_API_KEY'),
-    accountId: getEnvNumber('CHATWOOT_ACCOUNT_ID'),
-    inboxId: getEnvNumber('CHATWOOT_INBOX_ID'),
+    url: getEnvVar('CHATWOOT_URL', 'http://localhost:3000'),
+    apiKey: getEnvVar('CHATWOOT_API_KEY', 'your_api_key_here'),
+    accountId: getEnvNumber('CHATWOOT_ACCOUNT_ID', 1),
+    inboxId: getEnvNumber('CHATWOOT_INBOX_ID', 1),
   },
   zapi: {
     instanceId: getEnvVar('ZAPI_INSTANCE_ID'),
