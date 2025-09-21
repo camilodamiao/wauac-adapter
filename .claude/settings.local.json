@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(node test-media.js)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd /c taskkill:*)",
+      "Bash(PORT=3334 npm run dev)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(PORT=3335 npm run dev)",
+      "Bash(PORT=9999 npm run dev)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
