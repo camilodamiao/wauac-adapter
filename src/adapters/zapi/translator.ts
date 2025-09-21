@@ -1,29 +1,97 @@
+/**
+ * @anchor translator:ZApiTranslator
+ * @description Tradutor completo entre formatos Z-API e Chatwoot
+ * @flow Recebe mensagem origem -> Analisa tipo -> Converte formato -> Retorna traduzido
+ * @dependencies Winston logger, interfaces Z-API e Chatwoot
+ * @validation Valida estruturas de entrada e saída
+ * @errors Translation failed, unsupported types, missing data
+ * @todo Implementar cache de traduções, otimização de mídia, batch processing
+ */
+
 import { logger } from '../../utils/logger';
 import { ZApiMessage } from './types';
-import { ChatwootMessage } from '../../services/chatwoot.service';
 
-export interface TranslationContext {
-  correlationId?: string;
-  direction: 'zapi-to-chatwoot' | 'chatwoot-to-zapi';
-  instanceId?: string;
-  conversationId?: number;
-}
-
-export interface ChatwootMessageData {
+/**
+ * @anchor translator:ChatwootMessage
+ * @description Interface para mensagem Chatwoot usada nas traduções
+ * @flow Define estrutura para mensagens do Chatwoot
+ * @dependencies Nenhuma dependência externa
+ * @validation id, content e message_type obrigatórios
+ * @errors Nenhum erro específico desta interface
+ * @todo Sincronizar com interface oficial do Chatwoot
+ */
+export interface ChatwootMessage {
+  id?: number;
   content: string;
   message_type: 'incoming' | 'outgoing';
-  content_type: 'text' | 'input_select' | 'cards' | 'form' | 'article';
-  content_attributes: Record<string, any>;
-  echo_id?: string;
+  content_type: 'text' | 'image' | 'audio' | 'video' | 'file';
+  private?: boolean;
+  content_attributes?: Record<string, any>;
   attachments?: Array<{
     file_type: string;
+    account_id?: number;
     data_url: string;
-    thumb_url?: string;
   }>;
 }
 
+/**
+ * @anchor translator:TranslationContext
+ * @description Contexto para operações de tradução
+ * @flow Define metadados necessários para tradução correta
+ * @dependencies Nenhuma dependência externa
+ * @validation correlationId para rastreamento, direction obrigatória
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar configurações de tradução, preferências do usuário
+ */
+export interface TranslationContext {
+  correlationId?: string;              // 🔗 ID para rastreamento
+  direction: 'zapi-to-chatwoot' | 'chatwoot-to-zapi'; // 🔄 Direção da tradução
+  instanceId?: string;                 // 🆔 ID da instância Z-API
+  conversationId?: number;             // 💬 ID da conversa Chatwoot
+}
+
+/**
+ * @anchor translator:ChatwootMessageData
+ * @description Estrutura de dados para mensagem Chatwoot
+ * @flow Define formato esperado pela API do Chatwoot
+ * @dependencies Nenhuma dependência externa
+ * @validation content e message_type obrigatórios
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar suporte para templates, botões, carousels
+ */
+export interface ChatwootMessageData {
+  content: string;                     // 💬 Conteúdo da mensagem
+  message_type: 'incoming' | 'outgoing'; // 📥 Direção da mensagem
+  content_type: 'text' | 'input_select' | 'cards' | 'form' | 'article'; // 📋 Tipo de conteúdo
+  content_attributes: Record<string, any>; // 📋 Atributos adicionais
+  echo_id?: string;                    // 🔄 ID para deduplicação
+  attachments?: Array<{                // 📎 Anexos opcionais
+    file_type: string;                 // 📄 Tipo do arquivo
+    data_url: string;                  // 🔗 URL do arquivo
+    thumb_url?: string;                // 🖼️ URL da miniatura
+  }>;
+}
+
+/**
+ * @anchor translator:ZApiTranslator
+ * @description Classe principal para tradução entre Z-API e Chatwoot
+ * @flow Métodos de tradução bidirecionais + utilitários
+ * @dependencies Logger, interfaces de mensagem
+ * @validation Valida formatos de entrada em cada método
+ * @errors Translation errors, unsupported formats, data corruption
+ * @todo Implementar cache, métricas de performance, validação schema
+ */
 export class ZApiTranslator {
 
+  /**
+   * @anchor translator:translateZApiToChatwoot
+   * @description Traduz mensagem Z-API para formato Chatwoot
+   * @flow Analisa tipo mensagem -> Extrai conteúdo -> Formata Chatwoot -> Retorna
+   * @dependencies ZApiMessage, TranslationContext, logger
+   * @validation zapiMessage válida, context com direction
+   * @errors Translation failed, unsupported message type, missing content
+   * @todo Otimizar tradução de mídia, adicionar cache, batch processing
+   */
   public translateZApiToChatwoot(zapiMessage: ZApiMessage, context: TranslationContext): ChatwootMessageData {
     try {
       logger.debug('Translating Z-API message to Chatwoot format', {

@@ -34,13 +34,17 @@ export class QueueService {
   private translator: ZApiTranslator;
 
   constructor() {
-    const redisConfig = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD || undefined,
+    const redisConfig: any = {
+      host: process.env['REDIS_HOST'] || 'localhost',
+      port: parseInt(process.env['REDIS_PORT'] || '6379'),
       maxRetriesPerRequest: 3,
       lazyConnect: true
     };
+
+    const redisPassword = process.env['REDIS_PASSWORD'];
+    if (redisPassword) {
+      redisConfig.password = redisPassword;
+    }
 
     this.messageQueue = new Queue('z-api-messages', {
       redis: redisConfig,

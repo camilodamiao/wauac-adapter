@@ -15,7 +15,8 @@
     "test:coverage": "jest --coverage",
     "security:check": "npm audit && npm audit signatures",
     "lint": "eslint src/**/*.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "tunnel": "ngrok http 3333"
   },
   "keywords": [
     "whatsapp",
@@ -50,6 +51,7 @@
     "@typescript-eslint/parser": "6.4.0",
     "eslint": "8.47.0",
     "jest": "29.6.2",
+    "ngrok": "^4.3.3",
     "ts-jest": "29.1.1",
     "tsx": "^4.20.5",
     "typescript": "5.2.2"

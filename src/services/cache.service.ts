@@ -28,28 +28,32 @@ export class CacheService {
    */
   constructor() {
     // 🔧 CONFIG: Lê configurações Redis das variáveis de ambiente
-    const redisHost = process.env.REDIS_HOST || 'localhost';
-    const redisPort = parseInt(process.env.REDIS_PORT || '6379');
-    const redisPassword = process.env.REDIS_PASSWORD || undefined;
-    const cacheTTLDays = parseInt(process.env.CACHE_TTL_DAYS || '7');
+    const redisHost = process.env['REDIS_HOST'] || 'localhost';
+    const redisPort = parseInt(process.env['REDIS_PORT'] || '6379');
+    const redisPassword = process.env['REDIS_PASSWORD'] || undefined;
+    const cacheTTLDays = parseInt(process.env['CACHE_TTL_DAYS'] || '7');
 
     // ⏰ TTL: Converte dias para segundos (TTL padrão: 7 dias)
     this.defaultTTL = cacheTTLDays * 24 * 60 * 60;
     this.keyPrefix = 'wauac:mapping:'; // 🔑 Namespace para chaves do cache
 
     // 🔗 REDIS: Configura cliente com retry e timeouts
-    this.redis = new Redis({
+    const redisConfig: any = {
       host: redisHost,
       port: redisPort,
-      password: redisPassword,
-      retryDelayOnFailover: 100,  // 🔄 Delay de retry em failover
       maxRetriesPerRequest: 3,    // 🔄 Máximo 3 tentativas por comando
       lazyConnect: true,          // 🚀 Conecta sob demanda
       keepAlive: 30000,           // 💓 Keep-alive de 30s
       connectTimeout: 10000,      // ⏱️ Timeout de conexão 10s
       commandTimeout: 5000,       // ⏱️ Timeout de comando 5s
       db: 0                       // 🗄️ Database 0 (padrão)
-    });
+    };
+
+    if (redisPassword) {
+      redisConfig.password = redisPassword;
+    }
+
+    this.redis = new Redis(redisConfig);
 
     // 📡 EVENTS: Configura handlers de eventos Redis
     this.setupEventHandlers();

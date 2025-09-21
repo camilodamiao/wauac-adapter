@@ -39,13 +39,13 @@ const checkServiceHealth = async (serviceName: string): Promise<{ status: 'up' |
         return { status: 'unknown' };
     }
   } catch (error) {
-    logger.error(`Health check failed for ${serviceName}`, { error: error.message });
+    logger.error(`Health check failed for ${serviceName}`, { error: error instanceof Error ? error.message : String(error) });
     return { status: 'down', responseTime: Date.now() - startTime };
   }
 };
 
 router.get('/', async (req: Request, res: Response) => {
-  const correlationId = req.correlationId;
+  const correlationId = req.headers['x-correlation-id'] as string || 'no-id';
   const timestamp = new Date().toISOString();
 
   try {
@@ -69,17 +69,19 @@ router.get('/', async (req: Request, res: Response) => {
       timestamp,
       uptime: process.uptime(),
       correlationId,
-      version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
+      version: process.env['npm_package_version'] || '1.0.0',
+      environment: process.env['NODE_ENV'] || 'development',
       services: Object.fromEntries(
-        Object.entries(services).map(([name, health]) => [
-          name,
-          {
+        Object.entries(services).map(([name, health]) => {
+          const serviceResult: { status: 'up' | 'down' | 'unknown'; responseTime?: number; lastCheck: string } = {
             status: health.status,
-            responseTime: health.responseTime,
             lastCheck: timestamp
+          };
+          if (health.responseTime !== undefined) {
+            serviceResult.responseTime = health.responseTime;
           }
-        ])
+          return [name, serviceResult];
+        })
       )
     };
 
@@ -96,7 +98,7 @@ router.get('/', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Health check failed', {
       correlationId,
-      error: error.message
+      error: error instanceof Error ? error.message : String(error)
     });
 
     res.status(503).json({
@@ -113,12 +115,12 @@ router.get('/liveness', (req: Request, res: Response) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
-    correlationId: req.correlationId
+    correlationId: req.headers['x-correlation-id'] as string || 'no-id'
   });
 });
 
 router.get('/readiness', async (req: Request, res: Response) => {
-  const correlationId = req.correlationId;
+  const correlationId = req.headers['x-correlation-id'] as string || 'no-id';
 
   try {
     const criticalServices = await Promise.all([
@@ -141,7 +143,7 @@ router.get('/readiness', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Readiness check failed', {
       correlationId,
-      error: error.message
+      error: error instanceof Error ? error.message : String(error)
     });
 
     res.status(503).json({

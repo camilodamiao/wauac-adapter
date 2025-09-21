@@ -60,7 +60,7 @@ function sanitizeData(data: any): any {
   return data;
 }
 
-const customFormat = winston.format.combine(
+const _customFormat = winston.format.combine(
   winston.format.timestamp({
     format: 'YYYY-MM-DD HH:mm:ss.SSS'
   }),

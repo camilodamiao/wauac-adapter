@@ -40,9 +40,9 @@ export const errorHandler = (
   error: Error | AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
-  const correlationId = req.correlationId || 'unknown';
+  const correlationId = req.headers['x-correlation-id'] as string || 'unknown';
 
   logger.error('Error occurred', {
     correlationId,
@@ -66,14 +66,14 @@ export const errorHandler = (
     path: req.path
   };
 
-  if (process.env.NODE_ENV === 'development' && !isAppError) {
+  if (process.env['NODE_ENV'] === 'development' && !isAppError) {
     (errorResponse as any).stack = error.stack;
   }
 
   res.status(statusCode).json(errorResponse);
 };
 
-export const notFoundHandler = (req: Request, res: Response, next: NextFunction): void => {
+export const notFoundHandler = (req: Request, _res: Response, next: NextFunction): void => {
   const error = new NotFoundError(`Route ${req.method} ${req.path} not found`);
   next(error);
 };

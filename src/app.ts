@@ -86,7 +86,7 @@ export class App {
       limit: '1mb'
     }));
 
-    this.express.use((req: Request, res: Response, next: NextFunction) => {
+    this.express.use((req: Request, _res: Response, next: NextFunction) => {
       const correlationId = req.headers['x-correlation-id'] as string;
       logger.info('Request received', {
         method: req.method,
@@ -103,7 +103,7 @@ export class App {
     this.express.use('/health', healthRoutes);
     this.express.use('/webhook', webhookRoutes);
 
-    this.express.get('/', (req: Request, res: Response) => {
+    this.express.get('/', (_req: Request, res: Response) => {
       res.json({
         name: 'WAUAC - WhatsApp Universal Adapter for Chatwoot',
         version: '1.0.0',

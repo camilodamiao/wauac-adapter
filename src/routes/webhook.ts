@@ -43,7 +43,7 @@ interface WebhookPayload {
  * @errors ValidationError para campos inválidos ou ausentes
  * @todo Implementar validação de schema mais robusta, sanitização
  */
-const validateWebhookPayload = (req: Request, res: Response, next: NextFunction): void => {
+const validateWebhookPayload = (req: Request, _res: Response, next: NextFunction): void => {
   const { event, data, timestamp, source } = req.body;
 
   // ✅ EVENT: Valida evento obrigatório
@@ -147,9 +147,9 @@ router.post('/chatwoot/message', webhookRateLimiter, async (req: Request, res: R
   } catch (error) {
     // ⚠️ ERROR: Loga erro e repassa para middleware
     logger.error('Error handling Chatwoot webhook', {
-      correlationId: req.correlationId,
-      error: error.message,
-      stack: error.stack
+      correlationId: req.headers['x-correlation-id'] as string || 'no-id',
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
     });
     next(error);
   }
@@ -185,8 +185,8 @@ router.get('/zapi/queue-status', async (req: Request, res: Response, next: NextF
   } catch (error) {
     // ⚠️ ERROR: Loga erro na consulta
     logger.error('Error getting queue status', {
-      correlationId: req.correlationId,
-      error: error.message
+      correlationId: req.headers['x-correlation-id'] as string || 'no-id',
+      error: error instanceof Error ? error.message : String(error)
     });
     next(error);
   }

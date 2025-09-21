@@ -7,6 +7,8 @@ import {
   ZApiMessage,
   ZApiStatus
 } from './types';
+import { ChatwootService } from '../../services/chatwoot.service';
+import { ZApiTranslator, TranslationContext } from './translator';
 
 /**
  * @anchor webhook.handler:messageReceivedSchema
@@ -107,6 +109,10 @@ const messageStatusSchema = Joi.object({
  */
 export class ZApiWebhookHandler {
   private messageQueue: Queue.Queue;
+  private chatwootService: ChatwootService;
+  private translator: ZApiTranslator;
+  private contactCache = new Map<string, number>();
+  private conversationCache = new Map<string, number>();
 
   /**
    * @anchor webhook.handler:constructor
@@ -138,10 +144,15 @@ export class ZApiWebhookHandler {
       }
     });
 
+    // 🔧 SERVICES: Inicializa serviços integrados
+    this.chatwootService = new ChatwootService();
+    this.translator = new ZApiTranslator();
+
     // 📝 LOG: Registra inicialização bem-sucedida
     logger.info('ZApiWebhookHandler initialized', {
       redisHost,
-      redisPort
+      redisPort,
+      chatwootIntegration: true
     });
   }
 
@@ -154,10 +165,10 @@ export class ZApiWebhookHandler {
    * @errors Payload inválido (400), Redis indisponível (500), Validation error
    * @todo Adicionar rate limiting, implementar deduplicação de mensagens
    */
-  public handleMessageReceived = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  public handleMessageReceived = async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
     try {
       // 🔍 DEBUG: Captura correlationId para rastreamento de requisição
-      const correlationId = req.correlationId;
+      const correlationId = req.headers['x-correlation-id'] as string || 'no-id';
 
       // 📝 LOG: Registra recebimento do webhook para auditoria
       logger.info('Z-API message received webhook triggered', {
@@ -194,49 +205,139 @@ export class ZApiWebhookHandler {
         return;
       }
 
-      // 📦 PAYLOAD: Prepara dados para processamento na fila
-      const jobData = {
-        correlationId,
-        message,
-        receivedAt: new Date().toISOString(),
-        type: 'message_received'
-      };
+      // 🔄 INTEGRATION: Processamento REAL com Chatwoot
+      await this.processMessageWithChatwoot(message, correlationId);
 
-      // 🚀 QUEUE: Adiciona job na fila com prioridade baseada no tipo
-      const job = await this.messageQueue.add('process-message', jobData, {
-        priority: message.isGroup ? 5 : 10, // 📊 Mensagens individuais têm prioridade maior
-        delay: 0                            // ⚡ Processamento imediato
-      });
-
-      // 📊 METRICS: Loga estatísticas do job criado
-      logger.info('Message queued for processing', {
-        correlationId,
-        jobId: job.id,
-        messageId: message.messageId,
-        phone: message.phone,
-        messageType: message.type,
-        isGroup: message.isGroup
-      });
-
-      // ✅ RESPONSE: Confirma recebimento com dados do job
+      // ✅ RESPONSE: Confirma processamento bem-sucedido
       res.status(200).json({
-        success: true,
-        message: 'Message received and queued for processing',
+        status: 'accepted',
         correlationId,
-        jobId: job.id,
+        processed: true,
+        messageId: message.messageId,
         timestamp: new Date().toISOString()
       });
 
     } catch (error: any) {
-      // ⚠️ ERROR: Loga erro completo e repassa para middleware
-      logger.error('Error handling Z-API message received', {
-        correlationId: req.correlationId,
-        error: error.message,
-        stack: error.stack
+      // ⚠️ ERROR: Loga erro completo
+      const correlationId = req.headers['x-correlation-id'] as string || 'no-id';
+      logger.error('❌ Erro ao processar webhook', {
+        correlationId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
       });
-      next(error);
+
+      // 🚨 RESPONSE: Retorna erro 500 com detalhes
+      res.status(500).json({
+        error: 'Processing failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        correlationId
+      });
     }
   };
+
+  /**
+   * @anchor webhook.handler:processMessageWithChatwoot
+   * @description Processa mensagem Z-API com integração real ao Chatwoot
+   * @flow Busca/cria contato → Busca/cria conversa → Traduz mensagem → Envia ao Chatwoot
+   * @dependencies ChatwootService, ZApiTranslator, cache interno
+   * @validation message e correlationId obrigatórios
+   * @errors Contact creation failed, conversation failed, message send failed
+   * @todo Implementar retry automático, fallback para fila, cache distribuído
+   */
+  private async processMessageWithChatwoot(message: ZApiMessage, correlationId: string): Promise<void> {
+    try {
+      // 1️⃣ CONTACT: Buscar ou criar contato
+      let contactId = this.contactCache.get(message.phone);
+      if (!contactId) {
+        const contact = await this.chatwootService.findOrCreateContact(
+          message.phone,
+          message.senderName || message.chatName
+        );
+        contactId = contact.id;
+        this.contactCache.set(message.phone, contactId);
+
+        logger.info('👤 Contato processado', {
+          correlationId,
+          contactId,
+          phone: message.phone.substring(0, 5) + '***',
+          cached: false
+        });
+      } else {
+        logger.debug('👤 Contato do cache', {
+          correlationId,
+          contactId,
+          phone: message.phone.substring(0, 5) + '***',
+          cached: true
+        });
+      }
+
+      // 2️⃣ CONVERSATION: Buscar ou criar conversa
+      let conversationId = this.conversationCache.get(message.phone);
+      if (!conversationId) {
+        const conversation = await this.chatwootService.findOrCreateConversation(contactId);
+        conversationId = conversation.id;
+        this.conversationCache.set(message.phone, conversationId);
+
+        logger.info('💬 Conversa processada', {
+          correlationId,
+          conversationId,
+          contactId,
+          cached: false
+        });
+      } else {
+        logger.debug('💬 Conversa do cache', {
+          correlationId,
+          conversationId,
+          contactId,
+          cached: true
+        });
+      }
+
+      // 3️⃣ TRANSLATE: Traduzir mensagem Z-API para Chatwoot
+      const translationContext: TranslationContext = {
+        correlationId,
+        direction: 'zapi-to-chatwoot',
+        instanceId: message.instanceId,
+        conversationId
+      };
+
+      const chatwootMessage = this.translator.translateZApiToChatwoot(message, translationContext);
+
+      logger.debug('🔄 Mensagem traduzida', {
+        correlationId,
+        messageType: chatwootMessage.message_type,
+        contentType: chatwootMessage.content_type,
+        hasAttachments: !!(chatwootMessage.attachments?.length)
+      });
+
+      // 4️⃣ SEND: Enviar mensagem para Chatwoot
+      await this.chatwootService.sendMessage(
+        conversationId,
+        chatwootMessage.content,
+        chatwootMessage.message_type
+      );
+
+      // ✅ SUCCESS: Loga processamento bem-sucedido
+      logger.info('✉️ Mensagem processada com sucesso no Chatwoot', {
+        correlationId,
+        messageId: message.messageId,
+        contactId,
+        conversationId,
+        phone: message.phone.substring(0, 5) + '***'
+      });
+
+    } catch (error) {
+      // ⚠️ ERROR: Loga erro detalhado do processamento
+      logger.error('❌ Erro no processamento com Chatwoot', {
+        correlationId,
+        messageId: message.messageId,
+        phone: message.phone.substring(0, 5) + '***',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+
+      throw error; // 🚨 Repassa erro para handleMessageReceived
+    }
+  }
 
   /**
    * @anchor webhook.handler:handleMessageStatus
@@ -250,7 +351,7 @@ export class ZApiWebhookHandler {
   public handleMessageStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // 🔍 DEBUG: Captura correlationId para rastreamento
-      const correlationId = req.correlationId;
+      const correlationId = req.headers['x-correlation-id'] as string || 'no-id';
 
       // 📝 LOG: Registra recebimento de webhook de status
       logger.info('Z-API message status webhook triggered', {
@@ -301,7 +402,7 @@ export class ZApiWebhookHandler {
     } catch (error: any) {
       // ⚠️ ERROR: Loga erro de status e repassa para middleware
       logger.error('Error handling Z-API message status', {
-        correlationId: req.correlationId,
+        correlationId: req.headers['x-correlation-id'] as string || 'no-id',
         error: error.message,
         stack: error.stack
       });
