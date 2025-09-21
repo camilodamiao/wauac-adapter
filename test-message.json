@@ -1,0 +1,13 @@
+{
+  "instanceId": "TEST123",
+  "messageId": "MSG_123",
+  "phone": "5511999999999",
+  "fromMe": false,
+  "momment": 1632228638000,
+  "status": "RECEIVED",
+  "senderName": "Joao",
+  "type": "ReceivedCallback",
+  "text": {
+    "message": "Teste local"
+  }
+}

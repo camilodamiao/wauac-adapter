@@ -1,0 +1,249 @@
+{
+  "description": "Payload de exemplo da Z-API para testes manuais do webhook",
+  "examples": {
+    "text_message": {
+      "waitingMessage": false,
+      "isGroup": false,
+      "isNewsletter": false,
+      "instanceId": "your_instance_id",
+      "messageId": "3A1B2C3D4E5F6G7H8I9J0K",
+      "phone": "5511999887766",
+      "fromMe": false,
+      "momment": 1634567890123,
+      "status": "received",
+      "chatName": "João da Silva",
+      "senderName": "João da Silva",
+      "senderPhoto": "https://example.com/photo.jpg",
+      "type": "ReceivedCallback",
+      "text": {
+        "message": "Olá! Como posso ajudar você hoje?"
+      }
+    },
+    "image_message": {
+      "waitingMessage": false,
+      "isGroup": false,
+      "instanceId": "your_instance_id",
+      "messageId": "3A1B2C3D4E5F6G7H8I9J1K",
+      "phone": "5511999887766",
+      "fromMe": false,
+      "momment": 1634567890456,
+      "chatName": "Maria Santos",
+      "senderName": "Maria Santos",
+      "type": "ReceivedCallback",
+      "image": {
+        "caption": "Aqui está a foto do produto que você pediu!",
+        "imageUrl": "https://example.com/image.jpg",
+        "thumbnailUrl": "https://example.com/thumb.jpg",
+        "mimeType": "image/jpeg"
+      }
+    },
+    "audio_message": {
+      "event": "received-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J2K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "fromMe": false,
+        "momment": 1634567890789,
+        "status": "received",
+        "chatName": "Pedro Costa",
+        "senderName": "Pedro Costa",
+        "type": "audio",
+        "audio": {
+          "url": "https://example.com/audio.mp3",
+          "mimetype": "audio/mpeg",
+          "size": 1024000
+        },
+        "isGroup": false
+      }
+    },
+    "video_message": {
+      "event": "received-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J3K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "fromMe": false,
+        "momment": 1634567891012,
+        "status": "received",
+        "chatName": "Ana Lima",
+        "senderName": "Ana Lima",
+        "type": "video",
+        "video": {
+          "url": "https://example.com/video.mp4",
+          "mimetype": "video/mp4",
+          "filename": "tutorial.mp4",
+          "caption": "Tutorial de como usar o produto",
+          "size": 5242880
+        },
+        "isGroup": false
+      }
+    },
+    "document_message": {
+      "event": "received-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J4K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "fromMe": false,
+        "momment": 1634567891345,
+        "status": "received",
+        "chatName": "Carlos Oliveira",
+        "senderName": "Carlos Oliveira",
+        "type": "document",
+        "document": {
+          "url": "https://example.com/document.pdf",
+          "mimetype": "application/pdf",
+          "filename": "contrato.pdf",
+          "size": 1048576
+        },
+        "isGroup": false
+      }
+    },
+    "location_message": {
+      "event": "received-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J5K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "fromMe": false,
+        "momment": 1634567891678,
+        "status": "received",
+        "chatName": "Lucia Ferreira",
+        "senderName": "Lucia Ferreira",
+        "type": "location",
+        "location": {
+          "latitude": -23.5505,
+          "longitude": -46.6333,
+          "address": "São Paulo, SP, Brasil",
+          "name": "Centro de São Paulo"
+        },
+        "isGroup": false
+      }
+    },
+    "group_message": {
+      "event": "received-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J6K",
+        "instanceId": "your_instance_id",
+        "phone": "5511888777666",
+        "fromMe": false,
+        "momment": 1634567892001,
+        "status": "received",
+        "chatName": "Grupo de Vendas",
+        "senderName": "Roberto Silva",
+        "participantPhone": "5511999887766",
+        "type": "text",
+        "text": {
+          "message": "Pessoal, chegaram os novos produtos!"
+        },
+        "isGroup": true
+      }
+    },
+    "button_response": {
+      "event": "received-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J7K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "fromMe": false,
+        "momment": 1634567892334,
+        "status": "received",
+        "chatName": "Marina Santos",
+        "senderName": "Marina Santos",
+        "type": "button_response",
+        "buttonResponse": {
+          "buttonId": "sim_button",
+          "buttonText": "Sim, aceito",
+          "type": "button_reply"
+        },
+        "isGroup": false
+      }
+    }
+  },
+  "status_update_examples": {
+    "message_sent": {
+      "event": "delivery-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J0K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "status": "sent",
+        "momment": 1634567890567
+      }
+    },
+    "message_delivered": {
+      "event": "delivery-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J0K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "status": "delivered",
+        "momment": 1634567890890
+      }
+    },
+    "message_read": {
+      "event": "delivery-callback",
+      "instanceId": "your_instance_id",
+      "data": {
+        "messageId": "3A1B2C3D4E5F6G7H8I9J0K",
+        "instanceId": "your_instance_id",
+        "phone": "5511999887766",
+        "status": "read",
+        "momment": 1634567891234
+      }
+    }
+  },
+  "test_commands": {
+    "curl_text_message": "curl -X POST http://localhost:3333/webhooks/zapi/message-received -H \"Content-Type: application/json\" -d '{\"waitingMessage\":false,\"isGroup\":false,\"instanceId\":\"your_instance_id\",\"messageId\":\"test123\",\"phone\":\"5511999887766\",\"fromMe\":false,\"momment\":1634567890123,\"chatName\":\"João Teste\",\"senderName\":\"João Teste\",\"type\":\"ReceivedCallback\",\"text\":{\"message\":\"Mensagem de teste\"}}'",
+    "curl_status_update": "curl -X POST http://localhost:3333/webhooks/zapi/message-status -H \"Content-Type: application/json\" -d '{\"messageId\":\"test123\",\"instanceId\":\"your_instance_id\",\"phone\":\"5511999887766\",\"status\":\"delivered\",\"momment\":1634567890890}'",
+    "curl_queue_status": "curl -X GET http://localhost:3333/webhooks/zapi/queue-status",
+    "curl_health_check": "curl -X GET http://localhost:3333/health"
+  },
+  "validation_notes": {
+    "required_fields": [
+      "event",
+      "instanceId",
+      "data.messageId",
+      "data.instanceId",
+      "data.phone",
+      "data.fromMe",
+      "data.momment",
+      "data.status",
+      "data.type"
+    ],
+    "phone_format": "Apenas números, exemplo: 5511999887766",
+    "momment_format": "Unix timestamp em millisegundos",
+    "event_types": [
+      "received-callback",
+      "delivery-callback"
+    ],
+    "message_types": [
+      "text",
+      "image",
+      "audio",
+      "video",
+      "document",
+      "location",
+      "contact",
+      "sticker",
+      "button_response",
+      "list_response"
+    ],
+    "status_types": [
+      "sent",
+      "delivered",
+      "read",
+      "failed",
+      "pending"
+    ]
+  }
+}

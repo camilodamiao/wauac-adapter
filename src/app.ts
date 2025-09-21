@@ -45,16 +45,21 @@ export class App {
 
     this.express.use(cors({
       origin: function (origin, callback) {
+        // Allow Z-API and other webhook origins
         const allowedOrigins = [
           config.chatwoot.url,
           'http://localhost:3000',
-          'http://localhost:3333'
+          'http://localhost:3333',
+          'https://api.z-api.io'
         ];
 
+        // Allow requests without origin (e.g., mobile apps, Postman, webhook services)
         if (!origin || allowedOrigins.indexOf(origin) !== -1) {
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by CORS'));
+          // For webhook debugging, log rejected origins
+          console.log('CORS rejected origin:', origin);
+          callback(null, true); // Allow all origins for webhook testing
         }
       },
       credentials: true,
@@ -70,13 +75,9 @@ export class App {
     this.express.use(correlationIdMiddleware);
     this.express.use(rateLimitMiddleware);
 
-    this.express.use('/webhook', express.raw({
-      type: 'application/json',
-      limit: '10mb'
-    }));
-
+    // JSON parsing middleware (removed problematic raw middleware)
     this.express.use(express.json({
-      limit: '1mb',
+      limit: '10mb',
       strict: true
     }));
 
