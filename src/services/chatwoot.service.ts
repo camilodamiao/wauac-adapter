@@ -9,6 +9,10 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
+import FormData from 'form-data';
+import { createWriteStream, unlinkSync, existsSync } from 'fs';
+import { join } from 'path';
+import { pipeline } from 'stream/promises';
 import { logger } from '../utils/logger';
 import { config } from '../config/environment';
 
@@ -262,6 +266,59 @@ export class ChatwootService {
   }
 
   /**
+   * @anchor chatwoot.service:downloadAttachment
+   * @description Baixa arquivo de uma URL e salva temporariamente
+   * @flow Download URL -> Salva arquivo temp -> Retorna caminho local
+   * @dependencies fs, axios, path
+   * @validation URL válida obrigatória
+   * @errors Download failed, write failed, invalid URL
+   * @todo Implementar timeout, retry, validação de tamanho
+   */
+  private async downloadAttachment(url: string, fileName?: string): Promise<string> {
+    try {
+      logger.debug('📥 Baixando attachment', { url, fileName });
+
+      // Gerar nome único se não fornecido
+      const timestamp = Date.now();
+      const extension = url.split('.').pop()?.split('?')[0] || 'bin';
+      const finalFileName = fileName || `attachment_${timestamp}.${extension}`;
+      const tempPath = join(process.cwd(), 'temp', finalFileName);
+
+      // Criar diretório temp se não existir
+      const tempDir = join(process.cwd(), 'temp');
+      if (!existsSync(tempDir)) {
+        require('fs').mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Download do arquivo
+      const response = await axios({
+        method: 'GET',
+        url: url,
+        responseType: 'stream',
+        timeout: 30000, // 30 segundos timeout
+        headers: {
+          'User-Agent': 'Wauac-Adapter/1.0'
+        }
+      });
+
+      // Salvar arquivo
+      const writeStream = createWriteStream(tempPath);
+      await pipeline(response.data, writeStream);
+
+      logger.debug('✅ Attachment baixado', {
+        url,
+        tempPath,
+        size: require('fs').statSync(tempPath).size
+      });
+
+      return tempPath;
+    } catch (error) {
+      logger.error('❌ Erro ao baixar attachment', { url, error });
+      throw new Error(`Falha ao baixar attachment: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  }
+
+  /**
    * @anchor chatwoot.service:sendMessage
    * @description Envia mensagem com suporte completo a mídias
    * @flow Detecta tipo -> Prepara payload -> POST message -> Loga resultado
@@ -297,23 +354,17 @@ export class ChatwootService {
         };
       }
 
-      // 📤 SEND: Envia mensagem completa para o Chatwoot
-      const response = await this.api.post(
-        `/accounts/${this.accountId}/conversations/${conversationId}/messages`,
-        messageData
-      );
+      // 🔍 DETECT: Verifica se há attachments para baixar e enviar
+      const attachments = messageData.content_attributes?.attachments;
+      const hasAttachments = attachments && attachments.length > 0;
 
-      // ✅ SUCCESS: Log detalhado do tipo de mensagem enviada
-      const hasAttachments = messageData.content_attributes?.attachments?.length && messageData.content_attributes.attachments.length > 0;
-      logger.info('✉️ Mensagem enviada ao Chatwoot', {
-        conversationId,
-        messageId: response.data.id,
-        contentType: messageData.content_type,
-        hasAttachments,
-        attachmentCount: messageData.content_attributes?.attachments?.length || 0
-      });
-
-      return response.data;
+      if (hasAttachments) {
+        // 📥 DOWNLOAD & SEND: Baixa arquivos e envia via multipart/form-data
+        return await this.sendMessageWithAttachments(conversationId, messageData, attachments);
+      } else {
+        // 📝 TEXT: Envia mensagem de texto normal
+        return await this.sendTextMessage(conversationId, messageData);
+      }
     } catch (error) {
       // ⚠️ ERROR: Erro detalhado no envio
       logger.error('Erro ao enviar mensagem', {
@@ -323,5 +374,147 @@ export class ChatwootService {
       });
       throw error;
     }
+  }
+
+  /**
+   * @anchor chatwoot.service:sendTextMessage
+   * @description Envia mensagem de texto simples via JSON
+   * @flow Prepara payload JSON -> POST message -> Retorna resultado
+   * @dependencies Axios configurado
+   * @validation messageData completo obrigatório
+   * @errors Network error, auth error, invalid response
+   * @todo Adicionar retry logic, rate limiting
+   */
+  private async sendTextMessage(conversationId: number, messageData: ChatwootMessageData): Promise<any> {
+    logger.debug('📝 Enviando mensagem de texto', {
+      conversationId,
+      content: messageData.content.substring(0, 50) + '...'
+    });
+
+    const response = await this.api.post(
+      `/accounts/${this.accountId}/conversations/${conversationId}/messages`,
+      messageData
+    );
+
+    logger.info('✉️ Mensagem de texto enviada', {
+      conversationId,
+      messageId: response.data.id,
+      contentType: messageData.content_type
+    });
+
+    return response.data;
+  }
+
+  /**
+   * @anchor chatwoot.service:sendMessageWithAttachments
+   * @description Baixa arquivos de URLs e envia via multipart/form-data
+   * @flow Download files -> Create FormData -> POST with files -> Cleanup -> Return
+   * @dependencies downloadAttachment, FormData, fs
+   * @validation attachments array obrigatório
+   * @errors Download failed, upload failed, cleanup failed
+   * @todo Implementar parallel downloads, compression, virus scan
+   */
+  private async sendMessageWithAttachments(
+    conversationId: number,
+    messageData: ChatwootMessageData,
+    attachments: any[]
+  ): Promise<any> {
+    const tempFiles: string[] = [];
+
+    try {
+      logger.info('📎 Processando mensagem com attachments', {
+        conversationId,
+        attachmentCount: attachments.length,
+        attachmentTypes: attachments.map(a => a.file_type)
+      });
+
+      // 📥 DOWNLOAD: Baixa todos os attachments
+      const downloadPromises = attachments.map(async (attachment, index) => {
+        const fileName = `attachment_${index}_${Date.now()}.${this.getFileExtension(attachment.file_type)}`;
+        const tempPath = await this.downloadAttachment(attachment.data_url, fileName);
+        tempFiles.push(tempPath);
+        return tempPath;
+      });
+
+      const downloadedFiles = await Promise.all(downloadPromises);
+
+      // 📦 FORM-DATA: Prepara multipart/form-data
+      const formData = new FormData();
+
+      // Adiciona campos básicos da mensagem
+      formData.append('content', messageData.content);
+      formData.append('message_type', messageData.message_type);
+      formData.append('private', (messageData.private ?? false).toString());
+
+      // 📎 ATTACHMENTS: Adiciona arquivos baixados
+      downloadedFiles.forEach((filePath, index) => {
+        const fileStream = require('fs').createReadStream(filePath);
+        const fileName = filePath.split(/[/\\]/).pop() || `attachment_${index}`;
+        formData.append('attachments[]', fileStream, fileName);
+      });
+
+      // 🚀 SEND: Envia via multipart/form-data
+      logger.debug('🚀 Enviando mensagem com attachments via multipart/form-data', {
+        conversationId,
+        fileCount: downloadedFiles.length
+      });
+
+      const response = await this.api.post(
+        `/accounts/${this.accountId}/conversations/${conversationId}/messages`,
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            'api_access_token': config.chatwoot.apiKey
+          },
+          timeout: 60000 // 60 segundos para uploads grandes
+        }
+      );
+
+      // ✅ SUCCESS: Log detalhado com attachments reais
+      logger.info('🎉 Mensagem com attachments enviada com sucesso', {
+        conversationId,
+        messageId: response.data.id,
+        attachmentCount: attachments.length,
+        attachmentTypes: attachments.map(a => a.file_type),
+        fileSizes: downloadedFiles.map(f => require('fs').statSync(f).size)
+      });
+
+      return response.data;
+
+    } finally {
+      // 🧹 CLEANUP: Remove arquivos temporários
+      tempFiles.forEach(filePath => {
+        try {
+          if (existsSync(filePath)) {
+            unlinkSync(filePath);
+            logger.debug('🗑️ Arquivo temporário removido', { filePath });
+          }
+        } catch (cleanupError) {
+          logger.warn('⚠️ Erro ao remover arquivo temporário', { filePath, cleanupError });
+        }
+      });
+    }
+  }
+
+  /**
+   * @anchor chatwoot.service:getFileExtension
+   * @description Retorna extensão apropriada baseada no tipo de arquivo
+   * @flow Mapeia file_type -> extensão padrão
+   * @dependencies Nenhuma
+   * @validation file_type string obrigatório
+   * @errors Nenhum erro específico
+   * @todo Adicionar mais tipos MIME, detecção automática
+   */
+  private getFileExtension(fileType: string): string {
+    const extensionMap: { [key: string]: string } = {
+      'image': 'jpg',
+      'video': 'mp4',
+      'audio': 'mp3',
+      'file': 'pdf',
+      'document': 'pdf'
+    };
+
+    return extensionMap[fileType] || 'bin';
   }
 }

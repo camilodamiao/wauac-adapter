@@ -11,7 +11,10 @@
       "Bash(npm run build:*)",
       "Bash(npx tsc:*)",
       "Bash(PORT=3335 npm run dev)",
-      "Bash(PORT=9999 npm run dev)"
+      "Bash(PORT=9999 npm run dev)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "Bash(npm run type-check:*)"
     ],
     "deny": [],
     "ask": []

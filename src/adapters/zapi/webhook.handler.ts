@@ -9,119 +9,9 @@ import {
 } from './types';
 import { ChatwootService } from '../../services/chatwoot.service';
 import { ZApiTranslator, TranslationContext } from './translator';
+import { zapiMessageSchema, zapiDebugSchema, zapiStatusSchema } from './validation';
 
-/**
- * @anchor webhook.handler:messageReceivedSchema
- * @description Schema Joi para validação de mensagens recebidas da Z-API
- * @flow Valida estrutura completa do webhook incluindo todos tipos de mídia
- * @dependencies Joi para validação de schema
- * @validation Campos obrigatórios: instanceId, messageId, phone, fromMe, type
- * @errors Retorna detalhes específicos do campo inválido
- * @todo Adicionar validação de tamanho máximo para arquivos
- */
-const messageReceivedSchema = Joi.object({
-  // ✅ REQUIRED: Campos essenciais obrigatórios
-  instanceId: Joi.string().required(),
-  messageId: Joi.string().required(),
-  phone: Joi.string().required(),
-  fromMe: Joi.boolean().default(false),
-  type: Joi.string().default('ReceivedCallback'),
-
-  // 📅 OPTIONAL: Campos básicos opcionais
-  momment: Joi.number().optional(),
-  status: Joi.string().optional(),
-  chatName: Joi.string().optional(),
-  senderName: Joi.string().optional(),
-  senderPhoto: Joi.string().allow(null).optional(), // Pode ser string ou null
-  photo: Joi.string().optional(),
-
-  // 🏷️ OPTIONAL: Campos de metadados opcionais
-  participantLid: Joi.string().allow(null).optional(),
-  chatLid: Joi.string().optional(),
-  connectedPhone: Joi.string().optional(),
-  waitingMessage: Joi.boolean().optional(),
-  isEdit: Joi.boolean().optional(),
-  isGroup: Joi.boolean().optional(),
-  isNewsletter: Joi.boolean().optional(),
-  isStatusReply: Joi.boolean().optional(),
-  broadcast: Joi.boolean().optional(),
-  forwarded: Joi.boolean().optional(),
-  fromApi: Joi.boolean().optional(),
-
-  // 💬 TEXT: Mensagem de texto simples
-  text: Joi.object({
-    message: Joi.string().required()
-  }).optional(),
-
-  // 🖼️ IMAGE: Mensagem com imagem e caption opcional
-  image: Joi.object({
-    caption: Joi.string().allow('').optional(),
-    imageUrl: Joi.string().uri().required(),
-    thumbnailUrl: Joi.string().uri().optional(),
-    mimeType: Joi.string().optional(),
-    viewOnce: Joi.boolean().optional(),
-    width: Joi.number().optional(),
-    height: Joi.number().optional()
-  }).unknown(true).optional(),
-
-  // 🎵 AUDIO: Mensagem de áudio (incluindo PTT)
-  audio: Joi.object({
-    audioUrl: Joi.string().uri().required(),
-    mimeType: Joi.string().optional(),
-    ptt: Joi.boolean().optional(),
-    seconds: Joi.number().optional(),
-    viewOnce: Joi.boolean().optional()
-  }).unknown(true).optional(),
-
-  // 🎥 VIDEO: Mensagem de vídeo com caption opcional
-  video: Joi.object({
-    caption: Joi.string().allow('').optional(),
-    videoUrl: Joi.string().uri().required(),
-    mimeType: Joi.string().optional(),
-    width: Joi.number().optional(),
-    height: Joi.number().optional(),
-    seconds: Joi.number().optional(),
-    viewOnce: Joi.boolean().optional(),
-    isGif: Joi.boolean().optional()
-  }).unknown(true).optional(),
-
-  // 📄 DOCUMENT: Arquivo/documento anexado
-  document: Joi.object({
-    documentUrl: Joi.string().uri().required(),
-    fileName: Joi.string().optional(),
-    mimeType: Joi.string().optional(),
-    title: Joi.string().optional(),
-    viewOnce: Joi.boolean().optional()
-  }).unknown(true).optional(),
-
-  // 📍 LOCATION: Localização geográfica
-  location: Joi.object({
-    latitude: Joi.number().required(),
-    longitude: Joi.number().required(),
-    description: Joi.string().optional(),
-    address: Joi.string().optional()
-  }).optional()
-}).unknown(true); // Permitir campos extras não mapeados
-
-/**
- * @anchor webhook.handler:messageStatusSchema
- * @description Schema Joi para validação de status de mensagens da Z-API
- * @flow Valida webhooks de mudança de status (enviado, entregue, lido)
- * @dependencies Joi para validação de schema
- * @validation Campos obrigatórios: messageId, instanceId, phone, status, momment
- * @errors Retorna detalhes específicos do campo inválido
- * @todo Adicionar enum para validar status válidos
- */
-const messageStatusSchema = Joi.object({
-  messageId: Joi.string().required(),
-  instanceId: Joi.string().required(),
-  phone: Joi.string().required(),
-  status: Joi.string().required(),
-  momment: Joi.number().required(),
-  chatName: Joi.string().optional(),
-  senderName: Joi.string().optional(),
-  isGroup: Joi.boolean().optional()
-});
+// Schemas de validação agora importados de validation.ts
 
 /**
  * @anchor webhook.handler:ZApiWebhookHandler
@@ -209,10 +99,78 @@ export class ZApiWebhookHandler {
         }
       });
 
-      // ✅ VALIDAÇÃO: Aplica schema Joi no payload recebido
-      const { error, value } = messageReceivedSchema.validate(req.body);
+      // 🔍 DEBUG: Logs detalhados para documentos e replies
+      logger.info('📨 Mensagem Z-API recebida - Debug completo', {
+        correlationId,
+        messageId: req.body.messageId,
+        messageType: req.body.type,
+        fromMe: req.body.fromMe,
+        // Debug de documentos
+        hasDocument: !!req.body.document,
+        documentUrl: req.body.document?.documentUrl,
+        documentName: req.body.document?.fileName,
+        documentTitle: req.body.document?.title,
+        documentMimeType: req.body.document?.mimeType,
+        documentPageCount: req.body.document?.pageCount,
+        documentCaption: req.body.document?.caption,
+        // Debug de replies - CORRIGIDO: usar referenceMessageId
+        isReply: !!req.body.referenceMessageId,
+        referenceMessageId: req.body.referenceMessageId,
+        hasQuotedMessage: !!req.body.quotedMessage,
+        quotedMessageId: req.body.quotedMessage?.messageId,
+        hasReplyMessage: !!req.body.replyMessage,
+        replyMessageId: req.body.replyMessage?.messageId,
+        hasQuotedMsg: !!req.body.quotedMsg,
+        quotedMsgId: req.body.quotedMsg?.messageId || req.body.quotedMsg?.id,
+        hasContextInfo: !!req.body.contextInfo,
+        contextStanzaId: req.body.contextInfo?.stanzaId,
+        // Debug de outros tipos
+        hasText: !!req.body.text,
+        hasImage: !!req.body.image,
+        hasAudio: !!req.body.audio,
+        hasVideo: !!req.body.video,
+        hasLocation: !!req.body.location,
+        hasSticker: !!req.body.sticker,
+        hasContact: !!req.body.contact,
+        hasPoll: !!req.body.poll,
+        hasReaction: !!req.body.reaction
+      });
+
+      // ✅ VALIDAÇÃO FLEXÍVEL: Usar schema flexível com fallback
+      let { error, value } = zapiMessageSchema.validate(req.body, {
+        allowUnknown: true,
+        stripUnknown: false,
+        abortEarly: false
+      });
+
       if (error) {
-        throw new ValidationError(`Invalid Z-API message: ${error.details.map(d => d.message).join(', ')}`);
+        // 🟡 LOG: Avisos de validação mas tenta processar mesmo assim
+        logger.warn('Validação com avisos, tentando processar', {
+          correlationId,
+          warnings: error.details.map(d => `${d.path.join('.')}: ${d.message}`),
+          messageType: req.body.type,
+          messageKeys: Object.keys(req.body),
+          messageId: req.body.messageId
+        });
+
+        // 🔄 FALLBACK: Tentar schema debug se o principal falhar
+        const debugResult = zapiDebugSchema.validate(req.body, {
+          allowUnknown: true,
+          stripUnknown: false
+        });
+
+        if (debugResult.error) {
+          // 🚨 ERRO CRÍTICO: Se até o schema debug falhar, é erro real
+          throw new ValidationError(`Critical Z-API validation error: ${debugResult.error.details.map(d => d.message).join(', ')}`);
+        } else {
+          // ✅ SUCCESS: Schema debug passou, usar dados originais
+          value = req.body;
+          logger.info('✅ Schema debug passou, processando mensagem', {
+            correlationId,
+            messageType: req.body.type,
+            messageId: req.body.messageId
+          });
+        }
       }
 
       const message: ZApiMessage = value;
@@ -401,10 +359,20 @@ export class ZApiWebhookHandler {
         body: req.body
       });
 
-      // ✅ VALIDAÇÃO: Aplica schema Joi específico para status
-      const { error, value } = messageStatusSchema.validate(req.body);
+      // ✅ VALIDAÇÃO: Aplica schema Joi flexível para status
+      const { error, value } = zapiStatusSchema.validate(req.body, {
+        allowUnknown: true,
+        stripUnknown: false,
+        abortEarly: false
+      });
+
       if (error) {
-        throw new ValidationError(`Invalid Z-API status: ${error.details.map(d => d.message).join(', ')}`);
+        logger.warn('Status validation warnings', {
+          correlationId,
+          warnings: error.details.map(d => `${d.path.join('.')}: ${d.message}`),
+          statusData: req.body
+        });
+        // Continuar processamento mesmo com avisos
       }
 
       const status: ZApiStatus = value;

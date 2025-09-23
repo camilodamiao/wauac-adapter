@@ -16,8 +16,12 @@ export enum ZApiMessageType {
   LOCATION = 'location',            // 📍 Localização geográfica
   CONTACT = 'contact',              // 👤 Contato compartilhado
   STICKER = 'sticker',              // 😄 Sticker/figurinha
+  POLL = 'poll',                    // 📊 Enquete/votação
+  REACTION = 'reaction',            // 😀 Reação emoji a mensagem
   BUTTON_RESPONSE = 'button_response', // 🔘 Resposta de botão interativo
-  LIST_RESPONSE = 'list_response'   // 📋 Resposta de lista interativa
+  LIST_RESPONSE = 'list_response',  // 📋 Resposta de lista interativa
+  TEMPLATE = 'template',            // 📋 Mensagem de template (business)
+  INTERACTIVE = 'interactive'       // 🔄 Mensagem interativa
 }
 
 /**
@@ -126,6 +130,8 @@ export interface ZApiDocumentData {
   fileName?: string;   // 📝 Nome do arquivo (opcional)
   mimeType?: string;   // 📋 Tipo MIME do documento (opcional)
   title?: string;      // 📌 Título do documento (opcional)
+  caption?: string;    // 📝 Legenda do documento (opcional)
+  pageCount?: number;  // 📊 Número de páginas (opcional)
 }
 
 /**
@@ -169,11 +175,16 @@ export interface ZApiButtonResponse {
  * @todo Adicionar maxItems, multiSelect, validation de limites
  */
 export interface ZApiListResponse {
-  listType: string;     // 📋 Tipo da lista (single_select, multi_select)
+  listType?: string;    // 📋 Tipo da lista (single_select, multi_select)
   title: string;        // 📝 Título principal da lista
   description?: string; // 📄 Descrição adicional (opcional)
-  buttonText: string;   // 🔄 Texto do botão de ação
-  sections: Array<{     // 📋 Seções da lista
+  buttonText?: string;  // 🔄 Texto do botão de ação
+  response?: {          // ✅ Resposta selecionada
+    id: string;         // 🆔 ID único do item selecionado
+    title: string;      // 📝 Título do item selecionado
+    description?: string; // 📄 Descrição do item (opcional)
+  };
+  sections?: Array<{    // 📋 Seções da lista
     title: string;      // 📝 Título da seção
     rows: Array<{       // 📋 Itens da seção
       id: string;       // 🆔 ID único do item
@@ -184,13 +195,96 @@ export interface ZApiListResponse {
 }
 
 /**
+ * @anchor types:ZApiStickerData
+ * @description Interface para dados de sticker/figurinha
+ * @flow Define estrutura de sticker com metadados
+ * @dependencies Nenhuma dependência externa
+ * @validation stickerUrl obrigatório, demais campos opcionais
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar animated, pack info, emoji
+ */
+export interface ZApiStickerData {
+  stickerUrl: string;   // 😄 URL do sticker (obrigatório)
+  mimeType?: string;    // 📋 Tipo MIME do sticker (opcional)
+  animated?: boolean;   // 🎬 Se é sticker animado (opcional)
+  packName?: string;    // 📦 Nome do pacote de stickers (opcional)
+}
+
+/**
+ * @anchor types:ZApiContactData
+ * @description Interface para dados de contato compartilhado
+ * @flow Define estrutura de contato com vCard
+ * @dependencies Nenhuma dependência externa
+ * @validation displayName obrigatório
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar mais campos vCard, múltiplos contatos
+ */
+export interface ZApiContactData {
+  displayName: string;  // 👤 Nome de exibição (obrigatório)
+  vcard?: string;       // 📇 Dados vCard completos (opcional)
+  phones?: string[];    // 📱 Lista de telefones (opcional)
+  emails?: string[];    // 📧 Lista de emails (opcional)
+}
+
+/**
+ * @anchor types:ZApiPollData
+ * @description Interface para dados de enquete/poll
+ * @flow Define estrutura de poll com opções
+ * @dependencies Nenhuma dependência externa
+ * @validation name e options obrigatórios
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar votes count, deadline, multiple choice
+ */
+export interface ZApiPollData {
+  name: string;                    // 📊 Título da enquete (obrigatório)
+  options: string[];               // 📋 Lista de opções (obrigatório)
+  selectableOptionsCount?: number; // 🔢 Número de opções selecionáveis (opcional)
+  multipleAnswers?: boolean;       // ☑️ Permite múltiplas respostas (opcional)
+}
+
+/**
+ * @anchor types:ZApiReactionData
+ * @description Interface para dados de reação emoji
+ * @flow Define estrutura de reação a mensagem
+ * @dependencies Nenhuma dependência externa
+ * @validation messageId e emoji obrigatórios
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar timestamp, participant info
+ */
+export interface ZApiReactionData {
+  messageId: string;    // 🆔 ID da mensagem sendo reagida (obrigatório)
+  emoji: string;        // 😀 Emoji da reação (obrigatório)
+  fromMe?: boolean;     // 🤖 Se a reação foi nossa (opcional)
+  participant?: string; // 👤 Participante que reagiu (em grupos)
+}
+
+/**
+ * @anchor types:ZApiQuotedMessage
+ * @description Interface para dados de mensagem citada/reply
+ * @flow Define estrutura da mensagem original que está sendo respondida
+ * @dependencies Nenhuma dependência externa
+ * @validation messageId obrigatório, demais campos opcionais
+ * @errors Nenhum erro específico desta interface
+ * @todo Adicionar mais metadados da mensagem original
+ */
+export interface ZApiQuotedMessage {
+  messageId: string;        // 🆔 ID da mensagem original sendo respondida
+  fromMe?: boolean;         // 🤖 Se a mensagem original foi enviada pelo bot
+  participant?: string;     // 👤 Participante da mensagem original (em grupos)
+  type?: string;           // 📋 Tipo da mensagem original
+  body?: string;           // 💬 Conteúdo da mensagem original
+  caption?: string;        // 📝 Legenda da mensagem original (para mídia)
+  contextInfo?: any;       // 📋 Informações de contexto adicional
+}
+
+/**
  * @anchor types:ZApiMessage
  * @description Interface principal para mensagens recebidas da Z-API
  * @flow Define estrutura completa de mensagem com todos tipos de conteúdo
- * @dependencies ZApiImageData, ZApiAudioData, ZApiVideoData, ZApiDocumentData, ZApiLocation
+ * @dependencies ZApiImageData, ZApiAudioData, ZApiVideoData, ZApiDocumentData, ZApiLocation, ZApiQuotedMessage
  * @validation instanceId, messageId, phone, fromMe, momment, type obrigatórios
  * @errors Nenhum erro específico desta interface
- * @todo Adicionar support para polls, reactions, quoted messages
+ * @todo Adicionar support para polls, reactions
  */
 export interface ZApiMessage {
   waitingMessage?: boolean; // ⏳ Indica se é mensagem de espera
@@ -207,6 +301,21 @@ export interface ZApiMessage {
   senderPhoto?: string;     // 🖼️ Foto do remetente (opcional)
   type: string;             // 📋 Tipo da mensagem (obrigatório)
 
+  // 🔄 REPLY: Mensagem citada/referenciada (reply) - Múltiplos formatos
+  quotedMessage?: ZApiQuotedMessage; // 📝 Dados da mensagem sendo respondida
+  isReply?: boolean;                 // 🔄 Indica se é uma mensagem de resposta
+  referenceMessageId?: string;       // 🔄 ID da mensagem sendo referenciada (Z-API)
+  replyMessage?: {                   // 📝 Formato alternativo de reply
+    messageId?: string;
+    fromMe?: boolean;
+    senderName?: string;
+    message?: string;
+    caption?: string;
+    type?: string;
+  };
+  quotedMsg?: any;                   // 📝 Campo Z-API alternativo para quoted message
+  contextInfo?: any;                 // 📋 Informações de contexto do WhatsApp
+
   // 📈 CONTEÚDO: Tipos de conteúdo suportados (mutuamente exclusivos)
   text?: {                  // 💬 Mensagem de texto
     message: string;
@@ -216,6 +325,12 @@ export interface ZApiMessage {
   video?: ZApiVideoData;    // 🎥 Mensagem de vídeo
   document?: ZApiDocumentData; // 📄 Mensagem de documento
   location?: ZApiLocation;  // 📍 Mensagem de localização
+  sticker?: ZApiStickerData; // 😄 Mensagem de sticker/figurinha
+  contact?: ZApiContactData; // 👤 Contato compartilhado
+  poll?: ZApiPollData;      // 📊 Enquete/votação
+  reaction?: ZApiReactionData; // 😀 Reação emoji a mensagem
+  buttonResponse?: ZApiButtonResponse; // 🔘 Resposta de botão interativo
+  listResponse?: ZApiListResponse; // 📋 Resposta de lista interativa
 }
 
 /**
